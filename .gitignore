@@ -1,0 +1,28 @@
+# virtual environment
+venv/
+.venv/
+env/
+venvBackend/
+
+# transcript files
+transcripts/
+uploads/
+
+# log files
+*.log
+logs/
+
+# cache files
+__pycache__/
+*.pyc
+
+# test file
+test/
+videos/
+
+
+# aws dockerrun file
+Dockerrun.aws.json
+
+# env file
+.env

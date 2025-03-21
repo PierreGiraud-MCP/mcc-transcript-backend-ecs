@@ -1,0 +1,25 @@
+.gitignore
+*Dockerfile*
+.curorrules
+.cursorignore
+README.md
+
+# Byte-compiled / optimized / DLL files
+*/__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+venvBackend/
+
+# data
+logs/
+transcripts/
+results/
+*.log

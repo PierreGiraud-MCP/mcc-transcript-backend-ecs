@@ -1,0 +1,24 @@
+services:
+  backend:
+    build:
+      context: ./
+    ports:
+      - "${BACKEND_PORT}:5001"
+    environment:
+      - FLASK_ENV=development
+      - FLASK_SECRET_KEY=${FLASK_SECRET_KEY}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - clientChoice=${clientChoice}
+      - IS_DOCKER=true
+      - IS_VERCEL=${IS_VERCEL}
+      - IS_EC2=${IS_EC2}
+      - FRONTEND_IP=${FRONTEND_IP}
+      - FRONTEND_PORT=${FRONTEND_PORT}
+      - aws_access_key_id=${aws_access_key_id}
+      - aws_secret_access_key=${aws_secret_access_key}
+      - bucket_name=${bucket_name}
+      - USE_FILE_SYSTEM=${USE_FILE_SYSTEM}
+
+    volumes:
+      - ./logs:/app/logs
