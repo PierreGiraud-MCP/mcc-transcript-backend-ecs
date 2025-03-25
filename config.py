@@ -58,7 +58,7 @@ class Config:
     LOG_BACKUP_COUNT = 3
     
     
-    #    ******************* API configuration *******************
+    #    ******************* Application API configuration *******************
     # API Flask key
     FLASK_SECRET_KEY = secrets_dict.get('FLASK_SECRET_KEY')
     
@@ -70,19 +70,25 @@ class Config:
     S3_UPLOAD_DIR = "uploads/"
     S3_TRANSCRIPT_DIR = "transcripts/"
     
-    # Application configuration
+    # Frontend IP configuration
     IS_DOCKER = secrets_dict.get('IS_DOCKER', False)
-    CLIENT_CHOICE = secrets_dict.get('clientChoice', '1')
     IS_EC2 = secrets_dict.get('IS_EC2', False)
+    IS_AMPLIFY = secrets_dict.get('IS_AMPLIFY', False)
     print(f"IS_EC2: {IS_EC2}")
     print(f"IS_DOCKER: {IS_DOCKER}")
-    if IS_EC2 == "true":
+    if IS_AMPLIFY == "true":
+        FRONTEND_IP = secrets_dict.get('FRONTEND_IP') + ":" + secrets_dict.get("FRONTEND_AMPLIFY_PORT")
+    elif IS_EC2 == "true":
         FRONTEND_IP = secrets_dict.get('FRONTEND_IP') + ":" + secrets_dict.get("FRONTEND_PORT")
     elif IS_DOCKER == "true":
         FRONTEND_IP = "http://127.0.0.1:" + secrets_dict.get("FRONTEND_PORT")
     else:
         # Local development
         FRONTEND_IP = "http://localhost:" + secrets_dict.get("FRONTEND_PORT")
+    
+    
+    #    ******************* AI API configuration *******************
+    CLIENT_CHOICE = secrets_dict.get('clientChoice','') # 1: OpenAI, 2: Groq'
     
     # OpenAI configuration
     OPENAI_API_KEY = secrets_dict.get('OPENAI_API_KEY')
