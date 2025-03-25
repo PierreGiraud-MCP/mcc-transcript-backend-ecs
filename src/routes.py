@@ -9,7 +9,7 @@ import time
 from app import app
 from src.client import (initialize_client, transcribe_openai, transcribe_groq, 
                         Transcribe_WithGroq_SingleChunk, GenerateSRTFromGroq)
-from config import Config
+from config import (Config, read_log_file) 
 import logging
 from src.s3Bucket import (check_file_exists, upload_to_s3, delete_file_from_s3, 
                             list_files_in_s3, open_from_s3, generate_presigned_url_GET, 
@@ -23,6 +23,39 @@ logger = logging.getLogger(__name__)
 @app.route('/')
 def home():
     return 'Hello, World!'
+
+@app.route('/logs')
+def logs():
+    logs = read_log_file()
+    # Directly embed the HTML-formatted logs into the page
+    return f"""
+    <html>
+        <head>
+            <title>Application Logs</title>
+            <style>
+                body {{
+                    font-family: Arial, sans-serif;
+                    background-color: #f4f4f9;
+                    color: #333;
+                    padding: 20px;
+                }}
+                .log {{
+                    white-space: pre-wrap;
+                    font-family: monospace;
+                    background-color: #1e1e1e;
+                    color: #dcdcdc;
+                    padding: 15px;
+                    border-radius: 5px;
+                    overflow-x: auto;
+                }}
+            </style>
+        </head>
+        <body>
+            <h1>Application Logs</h1>
+            <div class="log">{logs}</div>
+        </body>
+    </html>
+    """
 
 @app.route('/api/test/s3')
 def do():
@@ -289,5 +322,4 @@ def download(filename):
     except Exception as e:
         logger.error(f"Error generating presigned URL for download: {str(e)}")
         return jsonify({'error': 'Download failed', 'details': str(e)}), 500
-    
-    
+

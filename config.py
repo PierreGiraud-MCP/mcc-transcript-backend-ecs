@@ -98,4 +98,37 @@ class Config:
     GROQ_RESPONSE_FORMAT="verbose_json"
     GROQ_OVERLAP_TIME=10 # seconds
 
+def read_log_file():
+    log_file_path = Config.LOG_FILE
+    try:
+        with open(log_file_path, 'r') as log_file:
+            formatted_logs = []
+            for line in log_file:
+                # Extract and colorize parts of the log line
+                parts = line.split(' - ')
+                if len(parts) >= 4:
+                    timestamp = f'<span style="color: cyan;">{parts[0]}</span>'
+                    logger_name = f'<span style="color: lightblue;">{parts[1]}</span>'
+                    level = parts[2]
+                    message = ' - '.join(parts[3:]).strip()
+
+                    if "ERROR" in level:
+                        level = f'<span style="color: red;">{level}</span>'
+                        message = f'<span style="color: red;">{message}</span>'
+                    elif "INFO" in level:
+                        level = f'<span style="color: green;">{level}</span>'
+                        message = f'<span style="color: green;">{message}</span>'
+                    elif "WARNING" in level:
+                        level = f'<span style="color: yellow;">{level}</span>'
+                        message = f'<span style="color: yellow;">{message}</span>'
+
+                    formatted_logs.append(f"{timestamp} - {logger_name} - {level} - {message}")
+                else:
+                    formatted_logs.append(line.strip())  # Fallback for unexpected formats
+
+            return '<br>'.join(formatted_logs)  # Use <br> for HTML line breaks
+    except Exception as e:
+        logger.error(f"Error reading log file {log_file_path}: {e}")
+        return f"Error reading log file: {e}"
+
 
