@@ -28,10 +28,10 @@ def setup_logger():
     # Add the file handler
     root_logger.addHandler(file_handler)
     
-    # Optional: Add console handler for development
-    if os.environ.get('FLASK_ENV') == 'development':
-        console_handler = logging.StreamHandler()
-        console_handler.setFormatter(formatter)
-        root_logger.addHandler(console_handler)
+    # # Optional: Add console handler for development
+    # if os.environ.get('FLASK_ENV') == 'development':
+    #     console_handler = logging.StreamHandler()
+    #     console_handler.setFormatter(formatter)
+    #     root_logger.addHandler(console_handler)
     
     return root_logger 

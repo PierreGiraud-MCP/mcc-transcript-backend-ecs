@@ -10,10 +10,10 @@ logger = logging.getLogger(__name__)
 
 # initialize client
 def initialize_client(logger = logger):
-    if os.getenv('clientChoice') == '1':
+    if Config.CLIENT_CHOICE == '1':
         client = openai.OpenAI(api_key = Config.OPENAI_API_KEY)
         logger.info("OpenAI client initialized")
-    elif os.getenv('clientChoice') == '2':
+    elif Config.CLIENT_CHOICE == '2':
         client = Groq(api_key= Config.GROQ_API_KEY)
         logger.info("Groq client initialized")
     return client
