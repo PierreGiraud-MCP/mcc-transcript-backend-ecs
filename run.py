@@ -1,5 +1,4 @@
 import sys
-from dotenv import load_dotenv
 from src.file_utils import *
 from config import Config
 from src.initiate import initialize_app
@@ -9,8 +8,6 @@ from src.logger import setup_logger
 
 def main():
     try:
-        # Load environment variables
-        load_dotenv()
         
         # setting up the app       
         print(f"Python Version: {sys.version}")

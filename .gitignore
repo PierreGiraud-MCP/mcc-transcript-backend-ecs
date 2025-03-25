@@ -26,3 +26,6 @@ Dockerrun.aws.json
 
 # env file
 .env
+
+# cmd files
+*.bat
