@@ -134,20 +134,17 @@ def test_presigned_url_GET():
 
 # ******************************************** progess Routes ************************************************
 progress = 0
-step = "None"
+step = "Starting..."
+last_sent_progress = -1
 @app.route('/api/progress', methods=['GET'])
 def get_progress():
-    def generate():
-        global progress
-        global step
-        progress = 0
-        step = "Starting..."
-        while progress < 100:
-            yield f"data: {json.dumps({'progress': progress, 'step': step})}\n\n"
-            time.sleep(1)
-        yield f"data: {json.dumps({'progress': progress, 'step': step})}\n\n"
-    return Response(stream_with_context(generate()), mimetype='text/event-stream')
-
+    global progress
+    global step
+    global last_sent_progress        
+    if progress != last_sent_progress:  # Only send if there's an update
+        last_sent_progress = progress
+        return jsonify({"progress": progress, "step": step}), 200   
+    return "", 204  # No content if progress hasn't changed
 
 # ******************************************** Main Routes ************************************************
 
