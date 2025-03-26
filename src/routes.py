@@ -289,7 +289,7 @@ def transcribe():
         step = "Merging transcriptions..."
         # Delete audio_files from s3
         delete_file_from_s3(file_path, logger)
-        
+        logger.info(f"results: {results}")
         final_result = merge_transcriptions(results)
         
         progress = 90

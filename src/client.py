@@ -27,7 +27,7 @@ def transcribe_openai(audio_path, client, language="no_language", translation_la
             "model": Config.OPENAI_MODEL,
             "file": audio_file,
             "response_format": Config.VERBOSE,
-            "temperature": Config.TEMPERATURE,
+            "temperature": Config.OPENAI_TEMPERATURE,
         }
         if language != "no_language":
             transcription_params["language"] = language
@@ -85,14 +85,16 @@ def Transcribe_WithGroq_SingleChunk(client, chunk, chunk_num, total_chunks, lang
                 result = client.audio.transcriptions.create(
                 file=("chunk.flac", chunk, "audio/flac"),
                 model="whisper-large-v3",
-                response_format="verbose_json"
+                response_format="verbose_json",
+                temperature=Config.GROQ_TEMPERATURE
                 )
             else:
                 result = client.audio.transcriptions.create(
                     file=("chunk.flac", chunk, "audio/flac"),
                     model="whisper-large-v3",
                     language=language,
-                    response_format="verbose_json"
+                    response_format="verbose_json",
+                    temperature=Config.GROQ_TEMPERATURE
                     )
             api_time = time.time() - start_time
             total_api_time += api_time

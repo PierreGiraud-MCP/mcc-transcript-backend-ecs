@@ -88,7 +88,7 @@ class Config:
     
     
     #    ******************* AI API configuration *******************
-    CLIENT_CHOICE = secrets_dict.get('clientChoice','') # 1: OpenAI, 2: Groq'
+    CLIENT_CHOICE = secrets_dict.get('clientChoice','2') # 1: OpenAI, 2: Groq'
     
     # OpenAI configuration
     OPENAI_API_KEY = secrets_dict.get('OPENAI_API_KEY')
