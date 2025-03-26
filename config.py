@@ -38,8 +38,8 @@ class Config:
     ALLOWED_EXTENSIONS={'mp3', 'mp4', 'mpeg', 'mpga', 'm4a', 'wav', 'webm'}
     SUPPORTED_LANGUAGES=["en", "de", "fr", "it", "pt", "hi", "es", "th"]
     MAX_CONTENT_LENGTH = 50 * 1024 * 1024  # 50MB max file size
-    CLEANUP_INTERVAL = 30 # 30 minutes
-    AGE_LIMIT = 30 # 30 minutes
+    CLEANUP_INTERVAL = 24*60 # 1 day = 24*60 minutes
+    AGE_LIMIT = 60 # age limit of files: 60 minutes
     
     # File system configuration
     USE_FILE_SYSTEM = secrets_dict.get('USE_FILE_SYSTEM')

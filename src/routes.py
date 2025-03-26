@@ -14,10 +14,13 @@ import logging
 from src.s3Bucket import (check_file_exists, upload_to_s3, delete_file_from_s3, 
                             list_files_in_s3, open_from_s3, generate_presigned_url_GET, 
                             generate_presigned_url_POST, get_all_fileNames_in_s3,
-                            download_from_s3)
+                            download_from_s3, Delete_Old_Files_From_S3)
 import requests
 
 logger = logging.getLogger(__name__)
+
+# Global variable to track the last cleanup time
+last_cleanup_time = 0
 
 # ******************************************** Test Routes ************************************************
 @app.route('/')
@@ -185,6 +188,7 @@ def transcribe():
     """ Transcribe audio file """
     global progress
     global step
+    global last_cleanup_time
     progress = 15
     step = "Document uploaded"
     client = initialize_client()
@@ -298,6 +302,13 @@ def transcribe():
         
         progress = 100
         step = "Transcription complete !"
+
+        # cleanup the file from s3 if did not already do it within the last hour
+        current_time = time.time()
+        if current_time - last_cleanup_time > 3600:  # 3600 seconds = 1 hour
+            Delete_Old_Files_From_S3()
+            last_cleanup_time = current_time  
+
         return jsonify({
             'success': True,
             'filename': filename,
@@ -310,6 +321,17 @@ def transcribe():
     except Exception as e:
         logger.error(f"Error during transcription of {filename}: {e}")
         return jsonify({'error': 'Transcription failed', 'details': str(e)}), 500
+    finally:
+        # Clean up any leftover files in VIDEO_FOLDER
+        logger.info("Cleaning up leftover files in VIDEO_FOLDER")
+        if Config.USE_FILE_SYSTEM == "true" and os.path.exists(Config.VIDEO_FOLDER):
+            for file in os.listdir(Config.VIDEO_FOLDER):
+                file_path = os.path.join(Config.VIDEO_FOLDER, file)
+                try:
+                    os.remove(file_path)
+                    logger.info(f"Deleted leftover file: {file_path}")
+                except Exception as cleanup_error:
+                    logger.error(f"Failed to delete leftover file {file_path}: {cleanup_error}")
 
 @app.route('/api/download/<filename>', methods=['GET'])
 def download(filename):
