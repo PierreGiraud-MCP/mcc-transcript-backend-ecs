@@ -1,9 +1,7 @@
 import logging
-from datetime import datetime
 import docx
 import threading
 from config import Config
-from pydub import AudioSegment
 import io
 from src.s3Bucket import upload_to_s3, Delete_Old_Files_From_S3
 
@@ -15,11 +13,9 @@ def allowed_file(filename, allowed_extensions=[]):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in allowed_extensions
 
 # Save Transcription
-def save_transcription(transcription, filename, srt=None, logger=logger):
+def save_transcription(transcription, timestamped_filename, srt=None, logger=logger):
     """ Save transcription to a file on S3 """
-    logger.info(f"Saving transcription for {filename}")
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    timestamped_filename = f"{timestamp}-{filename}"  # Corrected variable name
+    logger.info(f"Saving transcription for {timestamped_filename}")
     
     # Save txt file
     txt_content = f"{timestamped_filename}\n{transcription}\n{'-' * 80}\n"
@@ -46,7 +42,7 @@ def save_transcription(transcription, filename, srt=None, logger=logger):
     else:
         srt_path = None
     
-    return timestamp, txt_path, docx_path, srt_path
+    return txt_path, docx_path, srt_path
 
 def schedule_cleanup(cleanup_interval=Config.CLEANUP_INTERVAL):
     """Schedule periodic cleanup of old transcript files."""

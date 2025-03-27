@@ -1,26 +1,46 @@
-import json
 import os
+from datetime import datetime
+import time
+import logging
 from src.file_utils import save_transcription
 from src.process_audio import (extract_audio, preprocess_audio, split_audio_into_chunks, 
                                 preprocess_audio_filesystem, split_audio_into_chunks_filesystem)
 from src.merge_transcription import merge_transcriptions
 from flask import request, jsonify, send_file, Response, stream_with_context
-import time
 from app import app
 from src.client import (initialize_client, transcribe_openai, transcribe_groq, 
                         Transcribe_WithGroq_SingleChunk, GenerateSRTFromGroq)
 from config import (Config, read_log_file) 
-import logging
+
 from src.s3Bucket import (check_file_exists, upload_to_s3, delete_file_from_s3, 
                             list_files_in_s3, open_from_s3, generate_presigned_url_GET, 
                             generate_presigned_url_POST, get_all_fileNames_in_s3,
                             download_from_s3, Delete_Old_Files_From_S3)
 import requests
+import threading
 
 logger = logging.getLogger(__name__)
 
 # Global variable to track the last cleanup time
 last_cleanup_time = 0
+
+# Global dictionary to store responses with timestamps
+transcription_responses = {}
+RESPONSE_EXPIRY_SECONDS = 3600  # 1 hour
+
+# Global variable to track the last cleanup time for transcription responses
+last_transcription_cleanup_time = 0
+
+def cleanup_transcription_responses():
+    """Clean up expired entries in transcription_responses."""
+    global transcription_responses
+    current_time = time.time()
+    keys_to_delete = [
+        key for key, value in transcription_responses.items()
+        if current_time - value['timestamp'] > RESPONSE_EXPIRY_SECONDS
+    ]
+    for key in keys_to_delete:
+        del transcription_responses[key]
 
 # ******************************************** Test Routes ************************************************
 @app.route('/')
@@ -135,12 +155,14 @@ def test_presigned_url_GET():
 # ******************************************** progess Routes ************************************************
 progress = 0
 step = "Starting..."
-last_sent_progress = -1
+last_sent_progress = 0
 @app.route('/api/progress', methods=['GET'])
 def get_progress():
     global progress
     global step
-    global last_sent_progress        
+    global last_sent_progress
+    if progress == -1:
+        return jsonify({"progress": last_sent_progress, "error": step}), 569        
     if progress != last_sent_progress:  # Only send if there's an update
         last_sent_progress = progress
         return jsonify({"progress": progress, "step": step}), 200   
@@ -186,6 +208,16 @@ def transcribe():
     global progress
     global step
     global last_cleanup_time
+    global last_transcription_cleanup_time
+    global transcription_responses
+
+    # Perform cleanup if it hasn't been done in the last hour
+    current_time = time.time()
+    if current_time - last_transcription_cleanup_time > 3600:  # 1 hour
+        logger.info("Performing cleanup of expired transcription responses.")
+        cleanup_transcription_responses()
+        last_transcription_cleanup_time = current_time
+
     progress = 15
     step = "Document uploaded"
     client = initialize_client()
@@ -205,129 +237,166 @@ def transcribe():
         if translation_language == "en":
             language = "en"
 
-        file_path = filename # TODO add config folder once
+        file_path = filename  # TODO add config folder once
         
         step = "Checking if the document is correctly uploaded..."
         # check for file path in s3 bucket
         fileExist, _ = check_file_exists(file_path, 1000)
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        timestamped_filename = f"{timestamp}-{filename}"
+        logger.info(f"Transcribing file: {filename} with timestamped filename: {timestamped_filename}")
         
         if not fileExist:
             logger.error(f"File not found at path: {file_path}")
             return jsonify({'error': 'File not found'}), 404
-        
-        if Config.USE_FILE_SYSTEM == "false":
-            # Get File from s3 bucket
-            content, file_type = open_from_s3(file_path, logger)
 
-            progress = 20
-            step = "Extracting audio..."
-            audio_content = extract_audio(content, file_type, logger)
-            if audio_content is None:
-                logger.error("Failed to extract audio")
-                return jsonify({'error': 'Failed to extract audio'}), 500
-
-            progress = 30
-            step = "Preprocessing audio..."
-            processed_audio = preprocess_audio(audio_content)
-            progress = 40
-            step = "Splitting audio into chunks..."
-
-            chunks = split_audio_into_chunks(processed_audio)
-
-            results = []
-            total_transcription_time = 0
-
-            progress = 45
-            step = "Transcribing audio..."
-            for i, chunk in enumerate(chunks):
-                progress = 45 + (i / len(chunks)) * 35
-                step = f"Transcribing chunk {i + 1} of {len(chunks)}"
-                
-                logger.info(f"Transcribing chunk {i + 1} of {len(chunks)}")
-                result, chunk_time = Transcribe_WithGroq_SingleChunk(client, chunk, i + 1, len(chunks), language)
-                total_transcription_time += chunk_time
-                results.append((result, i * (600 - 10) * 1000))
-                
-        elif Config.USE_FILE_SYSTEM == "true":
-            progress = 20
-            step = "Preprocessing audio..."
-            local_file_path = download_from_s3(file_path, logger)
-            local_processed_file_path = preprocess_audio_filesystem(local_file_path, logger)
-            
-            progress = 40
-            step = "Splitting audio into chunks..."
-            local_chunks = split_audio_into_chunks_filesystem(local_processed_file_path)
-
-            results = []
-            total_transcription_time = 0
-            progress = 45
-            step = "Transcribing audio..."
-
-            for i, chunk_file in enumerate(local_chunks):
-                progress = 45 + (i / len(local_chunks)) * 35
-                step = f"Transcribing chunk {i + 1} of {len(local_chunks)}"
-                
-                logger.info(f"Transcribing chunk {i + 1} of {len(local_chunks)}")
-                
-                # Open the temporary chunk file
-                with open(chunk_file, 'rb') as chunk:
-                    result, chunk_time = Transcribe_WithGroq_SingleChunk(client, chunk, i + 1, len(local_chunks), language)
-                
-                total_transcription_time += chunk_time
-                results.append((result, i * (600 - 10) * 1000))
-                
-                # Clean up the temporary chunk file
-                os.remove(chunk_file)
-            
-        else:
-            logger.error(f"File system configuration error with USE_FILE_SYSTEM: {Config.USE_FILE_SYSTEM}")
-            return jsonify({'error': 'File system configuration error'}), 500
-        
-        
-
-        progress = 80
-        step = "Merging transcriptions..."
-        # Delete audio_files from s3
-        delete_file_from_s3(file_path, logger)
-        final_result = merge_transcriptions(results)
-        
-        progress = 90
-        step = "Generating files..."
-        srt = GenerateSRTFromGroq(final_result['segments'], logger)
-        time_stamp, txt_path, docx_path, srt_path = save_transcription(final_result['text'], filename, srt, logger)
-        
-        progress = 100
-        step = "Transcription complete !"
-
-        # cleanup the file from s3 if did not already do it within the last hour
-        current_time = time.time()
-        if current_time - last_cleanup_time > 3600:  # 3600 seconds = 1 hour
-            Delete_Old_Files_From_S3()
-            last_cleanup_time = current_time  
-
-        return jsonify({
-            'success': True,
-            'filename': filename,
-            'transcription': final_result['text'],
-            'timestamp': time_stamp,
-            'txt': os.path.basename(txt_path),
-            'word_doc': os.path.basename(docx_path),
-            'srt': os.path.basename(srt_path) if srt_path else None
-        }), 200
+        # Return early with the timestamped filename to avoid timeout
+        return jsonify({'success': True, 'timestamped_filename': timestamped_filename}), 200
     except Exception as e:
-        logger.error(f"Error during transcription of {filename}: {e}")
-        return jsonify({'error': 'Transcription failed', 'details': str(e)}), 500
+        logger.error(f"Error launching transcription of {filename}: {e}")
     finally:
-        # Clean up any leftover files in VIDEO_FOLDER
-        logger.info("Cleaning up leftover files in VIDEO_FOLDER")
-        if Config.USE_FILE_SYSTEM == "true" and os.path.exists(Config.VIDEO_FOLDER):
-            for file in os.listdir(Config.VIDEO_FOLDER):
-                file_path = os.path.join(Config.VIDEO_FOLDER, file)
-                try:
-                    os.remove(file_path)
-                    logger.info(f"Deleted leftover file: {file_path}")
-                except Exception as cleanup_error:
-                    logger.error(f"Failed to delete leftover file {file_path}: {cleanup_error}")
+        # Do the actual transcription
+        try:
+            if Config.USE_FILE_SYSTEM == "false":
+                # Get File from s3 bucket
+                content, file_type = open_from_s3(file_path, logger)
+
+                progress = 20
+                step = "Extracting audio..."
+                audio_content = extract_audio(content, file_type, logger)
+                if audio_content is None:
+                    logger.error("Failed to extract audio")
+                    return jsonify({'error': 'Failed to extract audio'}), 500
+
+                progress = 30
+                step = "Preprocessing audio..."
+                processed_audio = preprocess_audio(audio_content)
+                progress = 40
+                step = "Splitting audio into chunks..."
+
+                chunks = split_audio_into_chunks(processed_audio)
+
+                results = []
+                total_transcription_time = 0
+
+                progress = 45
+                step = "Transcribing audio..."
+                for i, chunk in enumerate(chunks):
+                    progress = 45 + (i / len(chunks)) * 35
+                    step = f"Transcribing chunk {i + 1} of {len(chunks)}"
+                    
+                    logger.info(f"Transcribing chunk {i + 1} of {len(chunks)}")
+                    result, chunk_time = Transcribe_WithGroq_SingleChunk(client, chunk, i + 1, len(chunks), language)
+                    total_transcription_time += chunk_time
+                    results.append((result, i * (600 - 10) * 1000))
+                    
+            elif Config.USE_FILE_SYSTEM == "true":
+                progress = 20
+                step = "Preprocessing audio..."
+                local_file_path = download_from_s3(file_path, logger)
+                local_processed_file_path = preprocess_audio_filesystem(local_file_path, logger)
+                
+                progress = 40
+                step = "Splitting audio into chunks..."
+                local_chunks = split_audio_into_chunks_filesystem(local_processed_file_path)
+
+                results = []
+                total_transcription_time = 0
+                progress = 45
+                step = "Transcribing audio..."
+
+                for i, chunk_file in enumerate(local_chunks):
+                    progress = 45 + (i / len(local_chunks)) * 35
+                    step = f"Transcribing chunk {i + 1} of {len(local_chunks)}"
+                    
+                    logger.info(f"Transcribing chunk {i + 1} of {len(local_chunks)}")
+                    
+                    # Open the temporary chunk file
+                    with open(chunk_file, 'rb') as chunk:
+                        result, chunk_time = Transcribe_WithGroq_SingleChunk(client, chunk, i + 1, len(local_chunks), language)
+                    
+                    total_transcription_time += chunk_time
+                    results.append((result, i * (600 - 10) * 1000))
+                    
+                    # Clean up the temporary chunk file
+                    os.remove(chunk_file)
+                
+            else:
+                logger.error(f"File system configuration error with USE_FILE_SYSTEM: {Config.USE_FILE_SYSTEM}")
+                progress = -1
+                step = "File system configuration error"
+                return jsonify({'error': 'File system configuration error'}), 500
+
+            progress = 80
+            step = "Merging transcriptions..."
+            # Delete audio_files from s3
+            delete_file_from_s3(file_path, logger)
+            final_result = merge_transcriptions(results)
+            
+            progress = 90
+            step = "Generating files..."
+            srt = GenerateSRTFromGroq(final_result['segments'], logger)
+            txt_path, docx_path, srt_path = save_transcription(final_result['text'], timestamped_filename, srt, logger)
+            
+            progress = 100
+            step = "Transcription complete !"
+
+            # Save the response in the global dictionary with a timestamp
+            transcription_responses[timestamped_filename] = {
+                'success': True,
+                'filename': filename,
+                'transcription': final_result['text'],
+                'txt': os.path.basename(txt_path),
+                'word_doc': os.path.basename(docx_path),
+                'srt': os.path.basename(srt_path) if srt_path else None,
+                'timestamp': time.time()  # Add timestamp for cleanup
+            }
+
+            # cleanup the file from s3 if did not already do it within the last hour
+            current_time = time.time()
+            if current_time - last_cleanup_time > 3600:  # 3600 seconds = 1 hour
+                Delete_Old_Files_From_S3()
+                last_cleanup_time = current_time  
+                
+            # Clean up any leftover files in VIDEO_FOLDER
+            logger.info("Cleaning up leftover files in VIDEO_FOLDER")
+            if Config.USE_FILE_SYSTEM == "true" and os.path.exists(Config.VIDEO_FOLDER):
+                for file in os.listdir(Config.VIDEO_FOLDER):
+                    file_path = os.path.join(Config.VIDEO_FOLDER, file)
+                    try:
+                        os.remove(file_path)
+                        logger.info(f"Deleted leftover file: {file_path}")
+                    except Exception as cleanup_error:
+                        logger.error(f"Failed to delete leftover file {file_path}: {cleanup_error}")
+                
+        except Exception as e:
+            progress = -1 
+            step = f"transcription failed: {str(e)}"
+            logger.error(f"Error during transcription of {filename}: {e}")
+            return jsonify({'error': 'Transcription failed', 'details': str(e)}), 500
+
+
+@app.route('/api/fetch', methods=['POST'])
+def fetch_transcription():
+    """Fetch transcription result"""
+    global transcription_responses
+    try:
+        data = request.get_json()
+        timestamped_filename = data.get('timestamped_filename')
+
+        if not timestamped_filename:
+            return jsonify({'error': 'No timestamped_filename provided'}), 400
+
+        # Retrieve and delete the response from the global dictionary
+        response = transcription_responses.pop(timestamped_filename, None)
+
+        if not response:
+            return jsonify({'error': 'No transcription found for the provided filename'}), 404
+
+        return jsonify(response), 200
+    except Exception as e:
+        logger.error(f"Error fetching transcription: {e}")
+        return jsonify({'error': 'Fetch failed', 'details': str(e)}), 500
 
 @app.route('/api/download/<filename>', methods=['GET'])
 def download(filename):
