@@ -18,7 +18,7 @@ def get_secrets():
         get_secret_value_response = client.get_secret_value(
             SecretId=secret_name
         )
-        logger.info(f"Secret {secret_name} retrieved")
+        logger.info(f"Secrets retrieved")
         return get_secret_value_response['SecretString']
     except Exception as e:  
         logger.error(f"Error retrieving secret {secret_name}: {e}")
